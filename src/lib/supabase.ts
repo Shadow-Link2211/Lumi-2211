@@ -124,6 +124,9 @@ export interface Message {
   is_read: boolean;
   created_at: string;
   edited_at: string | null;
+  media_url: string | null;
+  media_type: string | null;
+  media_thumbnail_url: string | null;
   sender?: Profile;
   reactions?: Reaction[];
 }
@@ -144,6 +147,42 @@ export interface Conversation {
   last_message_at: string;
   created_at: string;
   other_user?: Profile;
+}
+
+export interface HiddenMessage {
+  id: string;
+  user_id: string;
+  message_id: string;
+  hidden_at: string;
+}
+
+export interface HiddenConversation {
+  id: string;
+  user_id: string;
+  conversation_id: string;
+  hidden_at: string;
+}
+
+export interface MutedChat {
+  id: string;
+  user_id: string;
+  conversation_id: string;
+  muted_at: string;
+}
+
+export interface BlockedUser {
+  id: string;
+  user_id: string;
+  blocked_user_id: string;
+  blocked_at: string;
+}
+
+export interface ContactNickname {
+  id: string;
+  user_id: string;
+  contact_id: string;
+  nickname: string;
+  updated_at: string;
 }
 
 export interface TrendingAudio {

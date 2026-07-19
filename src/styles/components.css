@@ -1987,3 +1987,56 @@
 .mt-4 { margin-top: var(--space-4); }
 .mb-4 { margin-bottom: var(--space-4); }
 .w-full { width: 100%; }
+
+/* Media attachments in messages */
+.message-media {
+  max-width: 280px;
+  max-height: 320px;
+  border-radius: var(--radius-md);
+  display: block;
+  margin-bottom: 4px;
+  object-fit: cover;
+}
+.dm-message-row.mine .message-media { margin-left: auto; }
+
+/* Attachment preview bar (before sending) */
+.attachment-preview-bar {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.attachment-preview {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.attachment-preview img,
+.attachment-preview video {
+  max-width: 160px;
+  max-height: 160px;
+  display: block;
+  object-fit: cover;
+}
+.attachment-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Nickname tag (shows real @username under the nickname) */
+.nickname-tag {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
