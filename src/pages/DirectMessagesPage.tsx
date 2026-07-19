@@ -28,6 +28,13 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
   const [presenceMap, setPresenceMap] = useState<Record<string, { is_online: boolean; last_seen_at: string }>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Refs to avoid stale closures in realtime subscriptions
+  const activeConvRef = useRef<ConversationWithOther | null>(null);
+  const userRef = useRef(user);
+  const knownMessageIds = useRef<Set<string>>(new Set());
+  useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   // Load conversations with the OTHER participant's profile (never the current user)
   const loadConversations = useCallback(async () => {
     if (!user) return;
@@ -47,9 +54,8 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
         unread_count: 0,
       };
     });
-    setConversations(convs);
 
-    // Compute unread counts (messages not sent by me and not read)
+    // Compute unread counts (messages not sent by me and not read) — persisted in DB
     const unreadByConv: Record<string, number> = {};
     await Promise.all(convs.map(async c => {
       const { count } = await supabase
@@ -60,7 +66,14 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
         .eq('is_read', false);
       unreadByConv[c.id] = count || 0;
     }));
-    setConversations(prev => prev.map(c => ({ ...c, unread_count: unreadByConv[c.id] || 0 })));
+    const withUnread = convs.map(c => ({ ...c, unread_count: unreadByConv[c.id] || 0 }));
+
+    // Preserve the active conversation object reference + keep its unread at 0 if open
+    const active = activeConvRef.current;
+    setConversations(prev => {
+      // If active conversation is open, keep its unread at 0 (we mark read on open)
+      return withUnread.map(c => (active && c.id === active.id ? { ...c, unread_count: 0 } : c));
+    });
 
     // Load presence for all other users
     const otherIds = convs.map(c => c.other_user.id);
@@ -76,40 +89,57 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // Real-time: new conversations, last_message updates, message inserts, read receipts, presence
+  // Real-time subscription — stable channel, uses refs to avoid stale closures
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('dm-global')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => loadConversations())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         const msg = payload.new as Message;
-        // If it's for the active conversation, append and mark read
-        if (activeConv && msg.conversation_id === activeConv.id) {
-          setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
-          if (msg.sender_id !== user.id) {
+        const currentUser = userRef.current;
+        const active = activeConvRef.current;
+        if (!currentUser) return;
+
+        // If the message belongs to the currently open conversation, append it live
+        if (active && msg.conversation_id === active.id) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === msg.id)) return prev;
+            return [...prev, msg as unknown as Message];
+          });
+          // If received (not sent by me), mark read immediately
+          if (msg.sender_id !== currentUser.id) {
             supabase.from('messages').update({ is_read: true }).eq('id', msg.id).then();
           }
-        } else if (msg.sender_id !== user.id) {
-          // Increment unread for the conversation
+        } else if (msg.sender_id !== currentUser.id) {
+          // Increment unread for the conversation in the sidebar
           setConversations(prev => prev.map(c => c.id === msg.conversation_id ? { ...c, unread_count: c.unread_count + 1 } : c));
         }
-        // Bump conversation order + last_message
+        // Refresh conversation list ordering + last_message
         loadConversations();
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => loadConversations())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+        const updated = payload.new as Message;
+        const active = activeConvRef.current;
+        // Update local message if present
+        if (active && updated.conversation_id === active.id) {
+          setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, is_read: updated.is_read } : m));
+        }
+        // Recompute unread counts (read receipts changed)
+        loadConversations();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         const p = payload.new as Profile;
         setPresenceMap(prev => ({ ...prev, [p.id]: { is_online: p.is_online, last_seen_at: p.last_seen_at } }));
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [user, activeConv, loadConversations]);
+  }, [user, loadConversations]);
 
   useEffect(() => {
     if (initialUserId && user) startConversation(initialUserId);
   }, [initialUserId, user]);
 
-  // Load messages for active conversation + mark as read
+  // Load messages for active conversation + mark as read (persisted in DB)
   useEffect(() => {
     if (!activeConv || !user) return;
     const loadMessages = async () => {
@@ -118,8 +148,12 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
         .select('*, sender:profiles!messages_sender_id_fkey(*)')
         .eq('conversation_id', activeConv.id)
         .order('created_at', { ascending: true });
-      if (data) setMessages(data as unknown as Message[]);
-      // Mark unread messages from the other user as read
+      if (data) {
+        const msgs = data as unknown as Message[];
+        knownMessageIds.current = new Set(msgs.map(m => m.id));
+        setMessages(msgs);
+      }
+      // Mark unread messages from the other user as read — persisted via fixed RLS policy
       await supabase.from('messages').update({ is_read: true }).eq('conversation_id', activeConv.id).neq('sender_id', user.id).eq('is_read', false);
       setConversations(prev => prev.map(c => c.id === activeConv.id ? { ...c, unread_count: 0 } : c));
     };
@@ -132,7 +166,6 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
 
   const startConversation = async (otherUserId: string) => {
     if (!user) return;
-    // Check for existing conversation in either direction
     const { data: existing } = await supabase
       .from('conversations')
       .select('*, p1:profiles!conversations_participant_one_fkey(*), p2:profiles!conversations_participant_two_fkey(*)')
@@ -169,37 +202,43 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
 
   const sendMessage = async () => {
     if (!messageText.trim() || !activeConv || !user) return;
+    const content = messageText.trim();
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
       conversation_id: activeConv.id,
       sender_id: user.id,
-      content: messageText.trim(),
+      content,
       is_read: false,
       created_at: new Date().toISOString(),
       sender: user,
     } as unknown as Message;
+    knownMessageIds.current.add(tempId);
     setMessages(prev => [...prev, optimistic]);
     setMessageText('');
-    // Insert asynchronously (don't block UI)
+
+    // Insert to DB (async) — realtime will broadcast to both sender & receiver
     const { data } = await supabase
       .from('messages')
-      .insert({ conversation_id: activeConv.id, sender_id: user.id, content: optimistic.content })
+      .insert({ conversation_id: activeConv.id, sender_id: user.id, content })
       .select('*, sender:profiles!messages_sender_id_fkey(*)')
       .single();
     if (data) {
-      setMessages(prev => prev.map(m => m.id === tempId ? (data as unknown as Message) : m));
-      await supabase.from('conversations').update({ last_message: optimistic.content, last_message_at: new Date().toISOString() }).eq('id', activeConv.id);
-      // Insert notification for recipient
-      await supabase.from('notifications').insert({ recipient_id: activeConv.other_user.id, actor_id: user.id, type: 'message', message_id: (data as any).id });
+      const realMsg = data as unknown as Message;
+      knownMessageIds.current.add(realMsg.id);
+      // Replace optimistic with the persisted message
+      setMessages(prev => prev.map(m => m.id === tempId ? realMsg : m));
+      // Update conversation's last_message + timestamp
+      await supabase.from('conversations').update({ last_message: content, last_message_at: new Date().toISOString() }).eq('id', activeConv.id);
+      // Notify recipient
+      await supabase.from('notifications').insert({ recipient_id: activeConv.other_user.id, actor_id: user.id, type: 'message', message_id: realMsg.id });
     } else {
+      knownMessageIds.current.delete(tempId);
       setMessages(prev => prev.filter(m => m.id !== tempId));
     }
   };
 
   if (!user) return null;
-
-  const totalUnread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
 
   return (
     <div className="page-container wide">
