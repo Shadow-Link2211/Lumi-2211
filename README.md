@@ -135,4 +135,6 @@ Built with 💜 by <b>Krishnav 2211</b>
 
 # Lumi-2211
 
-[![Open Lumi](public/assets/images/files_11030906-2026-07-18T17-00-19-421Z-files_11030906-2026-07-18T16-49-02-927Z-ed179abf-c932-4a59-ac3c-944712c405bf.webp)](https://lumi2211.bolt.host)
+<a href="https://lumi2211.bolt.host">
+  <img src="public/assets/images/files_11030906-2026-07-18T17-00-19-421Z-files_11030906-2026-07-18T16-49-02-927Z-ed179abf-c932-4a59-ac3c-944712c405bf.webp" alt="Open Lumi" width="200">
+</a>
