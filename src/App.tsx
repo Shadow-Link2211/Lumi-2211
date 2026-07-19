@@ -14,7 +14,9 @@ import { CreatePostPage } from './pages/CreatePostPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { DirectMessagesPage } from './pages/DirectMessagesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { Onboarding } from './components/Onboarding';
 import { supabase } from './lib/supabase';
+import { startPresence, stopPresence } from './lib/presence';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -23,6 +25,7 @@ const AppContent: React.FC = () => {
   const [pageParams, setPageParams] = useState<any>({});
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const navigate = (newPage: Page, params: any = {}) => {
     setPage(newPage);
@@ -30,6 +33,13 @@ const AppContent: React.FC = () => {
     window.scrollTo(0, 0);
   };
 
+  // Start presence when logged in
+  useEffect(() => {
+    if (user) startPresence(user.id);
+    return () => stopPresence();
+  }, [user]);
+
+  // Real-time unread notifications count
   useEffect(() => {
     if (!user) return;
     const loadUnread = async () => {
@@ -37,7 +47,37 @@ const AppContent: React.FC = () => {
       setUnreadNotifs(count || 0);
     };
     loadUnread();
-  }, [user, page]);
+    const channel = supabase.channel('unread-notifs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` }, () => loadUnread())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` }, () => loadUnread())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  // Real-time unread messages count (messages not sent by me and not read)
+  useEffect(() => {
+    if (!user) return;
+    const loadUnread = async () => {
+      const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).neq('sender_id', user.id).eq('is_read', false);
+      setUnreadMessages(count || 0);
+    };
+    loadUnread();
+    const channel = supabase.channel('unread-msgs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => loadUnread())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => loadUnread())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  // Show onboarding for users who haven't completed it
+  useEffect(() => {
+    if (user && !user.onboarded) setShowOnboarding(true);
+  }, [user]);
+
+  const handleOnboardingComplete = async () => {
+    setShowOnboarding(false);
+    if (user) await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
+  };
 
   if (loading) {
     return (
@@ -73,9 +113,10 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="app">
+      {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
       <Sidebar current={page} onNavigate={navigate} unreadNotifications={unreadNotifs} unreadMessages={unreadMessages} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <MobileTopBar onNavigate={navigate} />
+        <MobileTopBar onNavigate={navigate} unreadMessages={unreadMessages} />
         <main className="main-content">
           {renderPage()}
         </main>

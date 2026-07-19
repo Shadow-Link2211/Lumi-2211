@@ -37,6 +37,9 @@ export interface Profile {
   follower_count: number;
   following_count: number;
   post_count: number;
+  is_online: boolean;
+  last_seen_at: string;
+  onboarded: boolean;
   created_at: string;
   updated_at: string;
 }
