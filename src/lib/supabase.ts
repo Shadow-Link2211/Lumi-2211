@@ -123,7 +123,17 @@ export interface Message {
   content: string;
   is_read: boolean;
   created_at: string;
+  edited_at: string | null;
   sender?: Profile;
+  reactions?: Reaction[];
+}
+
+export interface Reaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
 }
 
 export interface Conversation {

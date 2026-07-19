@@ -74,6 +74,16 @@ const AppContent: React.FC = () => {
     if (user && !user.onboarded) setShowOnboarding(true);
   }, [user]);
 
+  // Listen for push-notification clicks to navigate to the conversation
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.otherUserId) navigate('messages', { userId: detail.otherUserId });
+    };
+    window.addEventListener('open-conversation', handler);
+    return () => window.removeEventListener('open-conversation', handler);
+  }, []);
+
   const handleOnboardingComplete = async () => {
     setShowOnboarding(false);
     if (user) await supabase.from('profiles').update({ onboarded: true }).eq('id', user.id);
