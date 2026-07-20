@@ -14,6 +14,7 @@ import { CreatePostPage } from './pages/CreatePostPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { DirectMessagesPage } from './pages/DirectMessagesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { StoryArchivePage } from './pages/StoryArchivePage';
 import { Onboarding } from './components/Onboarding';
 import { supabase } from './lib/supabase';
 import { startPresence, stopPresence } from './lib/presence';
@@ -117,6 +118,7 @@ const AppContent: React.FC = () => {
       case 'profile': return <ProfilePage userId={pageParams.userId || user.id} onEditProfile={() => navigate('edit-profile')} onNavigate={navigate} />;
       case 'edit-profile': return <EditProfilePage onDone={() => navigate('profile', { userId: user.id })} />;
       case 'settings': return <SettingsPage onNavigate={navigate} />;
+      case 'archive': return <StoryArchivePage />;
       default: return <HomeFeed onOpenProfile={(uid) => navigate('profile', { userId: uid })} />;
     }
   };

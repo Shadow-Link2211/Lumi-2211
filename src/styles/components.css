@@ -437,6 +437,52 @@
   object-fit: cover;
 }
 
+/* Original aspect ratio variant — no cropping (used in post viewer) */
+.post-image-wrapper-contain {
+  aspect-ratio: auto;
+  max-height: 75vh;
+  background: var(--bg-overlay);
+  overflow: hidden;
+}
+.post-image-wrapper-contain img {
+  width: 100%;
+  height: auto;
+  max-height: 75vh;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+
+.post-music-bar {
+  position: absolute;
+  bottom: var(--space-3);
+  left: var(--space-3);
+  right: var(--space-3);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: white;
+  z-index: 5;
+}
+.post-music-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.post-music-artist {
+  font-size: 11px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .post-image-blur {
   filter: blur(24px);
 }
@@ -896,7 +942,8 @@
 .reel-thumbnail {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: black;
 }
 
 .reel-overlay {
@@ -1005,8 +1052,17 @@
 .story-viewer-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   flex: 1;
+  min-height: 0;
+}
+.story-viewer-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  flex: 1;
+  min-height: 0;
+  background: black;
 }
 
 .story-viewer-caption {

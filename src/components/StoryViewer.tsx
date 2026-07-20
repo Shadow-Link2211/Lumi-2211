@@ -31,10 +31,13 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex,
   const [targetLang, setTargetLang] = useState('es');
   const [audioTrack, setAudioTrack] = useState<TrendingAudio | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [paused, setPaused] = useState(false);
   const playerRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<any>(null);
   const story = stories[index];
+  const isVideo = story?.media_type === 'video';
 
   // Load attached audio track when story changes
   useEffect(() => {
@@ -78,10 +81,14 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex,
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     setProgress(0);
+    setPaused(false);
+    // Video stories advance when the video ends; image stories use the chosen duration.
+    if (isVideo) return;
     const duration = story?.duration ? story.duration * 1000 : 5000;
     const step = 50;
     timerRef.current = setInterval(() => {
       setProgress(p => {
+        if (paused) return p;
         if (p >= 100) {
           if (index < stories.length - 1) setIndex(index + 1);
           else onClose();
@@ -91,7 +98,27 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex,
       });
     }, step);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [index]);
+  }, [index, isVideo, paused]);
+
+  // Track video progress for video stories
+  useEffect(() => {
+    if (!isVideo || !videoRef.current) return;
+    const v = videoRef.current;
+    const onTime = () => {
+      if (v.duration) setProgress((v.currentTime / v.duration) * 100);
+    };
+    const onEnded = () => {
+      if (index < stories.length - 1) setIndex(index + 1);
+      else onClose();
+    };
+    v.addEventListener('timeupdate', onTime);
+    v.addEventListener('ended', onEnded);
+    v.play().catch(() => {});
+    return () => {
+      v.removeEventListener('timeupdate', onTime);
+      v.removeEventListener('ended', onEnded);
+    };
+  }, [isVideo, index]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -148,7 +175,22 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex,
           <button className="btn-icon" style={{ color: 'white' }} onClick={onClose}><X size={24} /></button>
         </div>
 
-        <img src={story.media_url} alt={story.caption} className="story-viewer-image" />
+        {isVideo ? (
+          <video
+            ref={videoRef}
+            src={story.media_url}
+            className="story-viewer-video"
+            playsInline
+            autoPlay
+            onClick={() => {
+              const v = videoRef.current;
+              if (!v) return;
+              if (v.paused) { v.play(); setPaused(false); } else { v.pause(); setPaused(true); }
+            }}
+          />
+        ) : (
+          <img src={story.media_url} alt={story.caption} className="story-viewer-image" />
+        )}
 
         {story.caption && (
           <div className="story-viewer-caption">{story.caption}</div>

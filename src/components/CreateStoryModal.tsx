@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, ImagePlus, Send, Music, Play, Pause, Search } from 'lucide-react';
+import { X, ImagePlus, Video, Send, Music, Play, Pause, Search, Clock } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { supabase, TrendingAudio } from '../lib/supabase';
@@ -9,11 +9,15 @@ interface CreateStoryModalProps {
   onClose: () => void;
 }
 
+const DURATION_OPTIONS = [3, 5, 10, 15, 20, 30, 45, 60];
+
 export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [imageData, setImageData] = useState('');
+  const [mediaData, setMediaData] = useState('');
+  const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
   const [caption, setCaption] = useState('');
+  const [duration, setDuration] = useState(5);
   const [loading, setLoading] = useState(false);
   const [tracks, setTracks] = useState<TrendingAudio[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<TrendingAudio | null>(null);
@@ -39,11 +43,20 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose }) =
     load();
   }, []);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.type.startsWith('video/')) {
+      if (file.size > 30 * 1024 * 1024) {
+        showToast('Video must be under 30MB');
+        return;
+      }
+      setMediaType('video');
+    } else {
+      setMediaType('image');
+    }
     const reader = new FileReader();
-    reader.onload = () => setImageData(reader.result as string);
+    reader.onload = () => setMediaData(reader.result as string);
     reader.readAsDataURL(file);
   };
 
@@ -73,15 +86,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose }) =
   };
 
   const handleShare = async () => {
-    if (!imageData || !user) return;
+    if (!mediaData || !user) return;
     setLoading(true);
     if (previewing) stopPreview();
     const { error } = await supabase.from('stories').insert({
       user_id: user.id,
-      media_url: imageData,
-      media_type: 'image',
+      media_url: mediaData,
+      media_type: mediaType,
       caption: caption || '',
-      duration: 5,
+      duration: mediaType === 'image' ? duration : 60,
       audio_id: selectedTrack?.id || null,
     });
     if (error) {
@@ -109,23 +122,35 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose }) =
         </div>
         <div className="modal-body">
           <div
-            className={`image-upload-area ${imageData ? 'has-image' : ''}`}
-            onClick={() => !imageData && fileRef.current?.click()}
+            className={`image-upload-area ${mediaData ? 'has-image' : ''}`}
+            onClick={() => !mediaData && fileRef.current?.click()}
             style={{ aspectRatio: '9/16', maxHeight: 400 }}
           >
-            {imageData ? (
-              <img src={imageData} alt="Story preview" style={{ objectFit: 'cover' }} />
+            {mediaData ? (
+              mediaType === 'video' ? (
+                <video src={mediaData} controls style={{ width: '100%', maxHeight: 400, borderRadius: 'var(--radius-lg)' }} />
+              ) : (
+                <img src={mediaData} alt="Story preview" style={{ objectFit: 'cover' }} />
+              )
             ) : (
               <>
                 <ImagePlus size={48} />
-                <span>Select a photo for your story</span>
+                <span>Select a photo or video for your story</span>
+                <span className="text-xs">Images & videos up to 30MB</span>
               </>
             )}
           </div>
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display: 'none' }} />
-          {imageData && (
+          <input ref={fileRef} type="file" accept="image/*,video/*" onChange={handleFileChange} style={{ display: 'none' }} />
+          {mediaData && (
             <>
-              <button className="btn btn-ghost btn-sm mt-2" onClick={() => fileRef.current?.click()}>Change Photo</button>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
+                  {mediaType === 'video' ? <><Video size={14} /> Change Video</> : <><ImagePlus size={14} /> Change Photo</>}
+                </button>
+                {mediaType === 'video' && (
+                  <span className="text-xs text-tertiary" style={{ alignSelf: 'center' }}>Video stories play for their full duration</span>
+                )}
+              </div>
               <input
                 className="input mt-3"
                 placeholder="Add a caption..."
@@ -133,6 +158,26 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose }) =
                 onChange={e => setCaption(e.target.value)}
                 maxLength={100}
               />
+
+              {mediaType === 'image' && (
+                <div className="mt-3">
+                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={14} /> Display Duration ({duration}s)
+                  </label>
+                  <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+                    {DURATION_OPTIONS.map(d => (
+                      <button
+                        key={d}
+                        className={`btn btn-sm ${duration === d ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => setDuration(d)}
+                        style={{ padding: '6px 12px', fontSize: 13 }}
+                      >
+                        {d}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Audio attachment */}
               <div className="mt-4">

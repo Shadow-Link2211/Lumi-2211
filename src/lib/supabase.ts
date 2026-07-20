@@ -57,9 +57,11 @@ export interface Post {
   comment_count: number;
   save_count: number;
   mood_tags: string[];
+  audio_id: string | null;
   created_at: string;
   updated_at: string;
   profiles?: Profile;
+  audio?: TrendingAudio;
 }
 
 export interface Story {

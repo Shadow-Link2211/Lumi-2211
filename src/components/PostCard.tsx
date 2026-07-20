@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Repeat2, ShieldCheck, ShieldAlert, ShieldX, Sparkles, RefreshCw } from 'lucide-react';
-import { Post, Comment } from '../lib/supabase';
+import React, { useState, useEffect, useRef } from 'react';
+import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Repeat2, ShieldCheck, ShieldAlert, ShieldX, Sparkles, RefreshCw, Music, Play, Pause } from 'lucide-react';
+import { Post, Comment, TrendingAudio } from '../lib/supabase';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 import { ShareModal } from './ShareModal';
@@ -9,6 +9,8 @@ import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { AI_COMMENT_SUGGESTIONS } from '../lib/mockData';
 import { supabase } from '../lib/supabase';
+import { useLiked } from '../lib/useSocial';
+import { loadYouTubeAPI } from '../lib/youtube';
 import { aiSummarizeCaption, aiFactCheck } from '../lib/ai';
 
 interface PostCardProps {
@@ -20,7 +22,8 @@ interface PostCardProps {
 export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelete }) => {
   const { user, settings, isOwner } = useAuth();
   const { showToast } = useToast();
-  const [liked, setLiked] = useState(false);
+  const { liked, toggleLike } = useLiked({ post_id: post.id });
+  const [likeCount, setLikeCount] = useState(post.like_count);
   const [saved, setSaved] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
@@ -34,6 +37,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelet
   const [explicitBlur, setExplicitBlur] = useState(post.is_explicit && settings?.explicit_content_filter);
   const [showMenu, setShowMenu] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [audioTrack, setAudioTrack] = useState<TrendingAudio | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playerRef = useRef<any>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
   const shareUrl = `${window.location.origin}/?post=${post.id}`;
 
   const isMyPost = user?.id === post.user_id;
@@ -41,18 +48,90 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelet
   const showFactBadge = !postOwner?.is_owner && settings?.fake_news_checker !== false;
   const longCaption = post.caption.length > 120;
 
-  const handleLike = () => {
-    if (!liked) {
-      setLiked(true);
+  // Realtime like/comment count sync across screens
+  useEffect(() => {
+    const channel = supabase
+      .channel(`post-counts-${post.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'posts', filter: `id=eq.${post.id}` },
+        (payload: any) => {
+          setLikeCount(payload.new.like_count);
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [post.id]);
+
+  // Load attached audio track
+  useEffect(() => {
+    setAudioTrack(null);
+    setIsPlaying(false);
+    if (!post.audio_id) return;
+    const load = async () => {
+      const source = post.audio ?? null;
+      if (source) { setAudioTrack(source); return; }
+      const { data } = await supabase.from('trending_audio').select('*').eq('id', post.audio_id).maybeSingle();
+      if (data) setAudioTrack(data as TrendingAudio);
+    };
+    load();
+  }, [post.audio_id, post.audio]);
+
+  // Auto-play music while the post card is visible; stop on unmount
+  useEffect(() => {
+    if (!audioTrack) return;
+    let observer: IntersectionObserver | null = null;
+    const start = async () => {
+      await loadYouTubeAPI();
+      if (!playerRef.current && playerContainerRef.current) {
+        playerRef.current = new window.YT.Player(playerContainerRef.current, {
+          height: '0', width: '0',
+          videoId: audioTrack.video_id,
+          playerVars: { autoplay: 1, controls: 0, loop: 1, playlist: audioTrack.video_id },
+          events: {
+            onReady: (e: any) => { e.target.playVideo(); setIsPlaying(true); },
+            onError: () => setIsPlaying(false),
+            onStateChange: (e: any) => {
+              if (e.data === window.YT.PlayerState.PLAYING) setIsPlaying(true);
+              if (e.data === window.YT.PlayerState.PAUSED) setIsPlaying(false);
+            },
+          },
+        });
+      }
+    };
+    const stop = () => {
+      if (playerRef.current) { try { playerRef.current.pauseVideo(); } catch {} setIsPlaying(false); }
+    };
+    const wrapper = document.getElementById(`post-media-${post.id}`);
+    if (wrapper) {
+      observer = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) start();
+        else stop();
+      }, { threshold: 0.6 });
+      observer.observe(wrapper);
+    }
+    return () => {
+      if (observer) observer.disconnect();
+      if (playerRef.current) { try { playerRef.current.destroy(); } catch {} playerRef.current = null; }
+    };
+  }, [audioTrack, post.id]);
+
+  const togglePlay = () => {
+    if (!playerRef.current || !audioTrack) return;
+    if (isPlaying) { playerRef.current.pauseVideo(); setIsPlaying(false); }
+    else { playerRef.current.playVideo(); setIsPlaying(true); }
+  };
+
+  const handleLike = async () => {
+    const wasLiked = liked;
+    await toggleLike();
+    if (!wasLiked) {
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 1000);
-      supabase.from('likes').insert({ user_id: user?.id, post_id: post.id }).then();
+      setLikeCount(c => c + 1);
       supabase.from('notifications').insert({ recipient_id: post.user_id, actor_id: user?.id, type: 'like', post_id: post.id }).then();
     } else {
-      setLiked(false);
       setShowBreak(true);
       setTimeout(() => setShowBreak(false), 800);
-      supabase.from('likes').delete().eq('user_id', user?.id).eq('post_id', post.id).then();
+      setLikeCount(c => Math.max(0, c - 1));
     }
   };
 
@@ -149,7 +228,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelet
         )}
       </div>
 
-      <div className="post-image-wrapper" onDoubleClick={handleLike}>
+      <div id={`post-media-${post.id}`} className="post-image-wrapper post-image-wrapper-contain" onDoubleClick={handleLike}>
         <img src={post.image_url} alt={post.caption} className={explicitBlur ? 'post-image-blur' : ''} loading="lazy" />
         {explicitBlur && (
           <div className="post-explicit-overlay">
@@ -160,6 +239,19 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelet
         )}
         {showHeart && <div className="heart-burst"><Heart size={80} fill="white" /></div>}
         {showBreak && <div className="heart-break"><Heart size={80} fill="white" /></div>}
+        {audioTrack && (
+          <div className="post-music-bar">
+            <button className="btn-icon" onClick={togglePlay} style={{ color: 'white', width: 28, height: 28, flexShrink: 0 }}>
+              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="post-music-title">{audioTrack.title}</div>
+              <div className="post-music-artist">{audioTrack.artist}</div>
+            </div>
+            <Music size={14} style={{ opacity: 0.7, flexShrink: 0 }} />
+          </div>
+        )}
+        <div ref={playerContainerRef} style={{ display: 'none' }} />
       </div>
 
       <div className="post-actions">
@@ -175,7 +267,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelet
         </button>
       </div>
 
-      <div className="post-likes">{(post.like_count + (liked ? 1 : 0)).toLocaleString()} likes</div>
+      <div className="post-likes">{likeCount.toLocaleString()} likes</div>
 
       {showFactBadge && (
         <div className="post-caption" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>

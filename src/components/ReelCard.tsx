@@ -7,6 +7,7 @@ import { ShareModal } from './ShareModal';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { supabase } from '../lib/supabase';
+import { useLiked } from '../lib/useSocial';
 
 interface ReelCardProps {
   reel: Reel;
@@ -17,13 +18,24 @@ interface ReelCardProps {
 export const ReelCard: React.FC<ReelCardProps> = ({ reel, onOpenProfile, onDelete }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { liked, toggleLike } = useLiked({ reel_id: reel.id });
+  const [likeCount, setLikeCount] = useState(reel.like_count);
   const [muted, setMuted] = useState(true);
   const [showHeart, setShowHeart] = useState(false);
   const [showBreak, setShowBreak] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+
+  // Realtime like count sync
+  useEffect(() => {
+    const channel = supabase
+      .channel(`reel-counts-${reel.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'reels', filter: `id=eq.${reel.id}` },
+        (payload: any) => setLikeCount(payload.new.like_count))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [reel.id]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const profile = reel.profiles;
   const isMyReel = user?.id === reel.user_id;
@@ -44,18 +56,18 @@ export const ReelCard: React.FC<ReelCardProps> = ({ reel, onOpenProfile, onDelet
     return () => observer.disconnect();
   }, []);
 
-  const handleLike = () => {
-    if (!liked) {
-      setLiked(true);
+  const handleLike = async () => {
+    const wasLiked = liked;
+    await toggleLike();
+    if (!wasLiked) {
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 1000);
-      supabase.from('likes').insert({ user_id: user?.id, reel_id: reel.id }).then();
+      setLikeCount(c => c + 1);
       supabase.from('notifications').insert({ recipient_id: reel.user_id, actor_id: user?.id, type: 'reel_like', reel_id: reel.id }).then();
     } else {
-      setLiked(false);
       setShowBreak(true);
       setTimeout(() => setShowBreak(false), 800);
-      supabase.from('likes').delete().eq('user_id', user?.id).eq('reel_id', reel.id).then();
+      setLikeCount(c => Math.max(0, c - 1));
     }
   };
 
@@ -98,7 +110,7 @@ export const ReelCard: React.FC<ReelCardProps> = ({ reel, onOpenProfile, onDelet
       <div className="reel-actions">
         <div className="reel-action" onClick={handleLike}>
           <Heart size={28} fill={liked ? 'var(--error)' : 'none'} color={liked ? 'var(--error)' : 'white'} />
-          <span>{(reel.like_count + (liked ? 1 : 0)).toLocaleString()}</span>
+          <span>{likeCount.toLocaleString()}</span>
         </div>
         <div className="reel-action">
           <MessageCircle size={28} />
@@ -108,8 +120,8 @@ export const ReelCard: React.FC<ReelCardProps> = ({ reel, onOpenProfile, onDelet
           <Send size={28} />
           <span>Share</span>
         </div>
-        <div className="reel-action" onClick={() => { setSaved(!saved); showToast(saved ? 'Removed' : 'Saved'); }}>
-          <Bookmark size={28} fill={saved ? 'white' : 'none'} />
+        <div className="reel-action" onClick={() => { showToast('Saved'); }}>
+          <Bookmark size={28} />
           <span>{reel.view_count.toLocaleString()}</span>
         </div>
         {reel.video_url && (

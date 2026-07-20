@@ -57,7 +57,7 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({ onOpenProfile }) => {
   const loadData = useCallback(async () => {
     setLoading(true);
     const [postsRes, reelsRes, storiesRes] = await Promise.all([
-      supabase.from('posts').select('*, profiles!posts_user_id_fkey(*)').order('created_at', { ascending: false }).limit(10),
+      supabase.from('posts').select('*, profiles!posts_user_id_fkey(*), audio:trending_audio(*)').order('created_at', { ascending: false }).limit(10),
       supabase.from('reels').select('*, profiles!reels_user_id_fkey(*)').order('created_at', { ascending: false }).limit(5),
       supabase.from('stories').select('*, profiles!stories_user_id_fkey(*)').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(20),
     ]);

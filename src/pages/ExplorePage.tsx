@@ -18,7 +18,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onOpenProfile }) => {
   useEffect(() => {
     const load = async () => {
       const [postsRes, reelsRes] = await Promise.all([
-        supabase.from('posts').select('*, profiles!posts_user_id_fkey(*)').order('like_count', { ascending: false }).limit(30),
+        supabase.from('posts').select('*, profiles!posts_user_id_fkey(*), audio:trending_audio(*)').order('like_count', { ascending: false }).limit(30),
         supabase.from('reels').select('*, profiles!reels_user_id_fkey(*)').order('view_count', { ascending: false }).limit(15),
       ]);
       const posts = ((postsRes.data as unknown as Post[]) || []).map(p => ({ kind: 'post' as const, data: p }));

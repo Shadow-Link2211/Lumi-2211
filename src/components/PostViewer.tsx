@@ -43,7 +43,7 @@ export const PostViewer: React.FC<PostViewerProps> = ({ posts, reels, initialTyp
         {type === 'post' ? (
           <PostCard post={current as Post} onOpenProfile={onOpenProfile} onDelete={onDeletePost} />
         ) : (
-          <div style={{ height: '70vh' }}>
+          <div style={{ maxHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ReelCard reel={current as Reel} onOpenProfile={onOpenProfile} onDelete={onDeleteReel} />
           </div>
         )}

@@ -6,6 +6,7 @@ import { Avatar } from '../components/Avatar';
 import { OwnerBadge, VerifiedBadge } from '../components/Badges';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
+import { useFollowing } from '../lib/useSocial';
 import { Modal } from '../components/Modal';
 import { PostViewer } from '../components/PostViewer';
 
@@ -23,7 +24,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
   const [reels, setReels] = useState<Reel[]>([]);
   const [savedPosts, setSavedPosts] = useState<Post[]>([]);
   const [tab, setTab] = useState<'posts' | 'reels' | 'saved'>('posts');
-  const [isFollowing, setIsFollowing] = useState(false);
+  const { following, toggleFollow } = useFollowing(userId);
   const [showReport, setShowReport] = useState(false);
   const [viewer, setViewer] = useState<{ type: 'post' | 'reel'; index: number } | null>(null);
 
@@ -33,7 +34,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
       setProfile(data as Profile);
 
       const [postsRes, reelsRes] = await Promise.all([
-        supabase.from('posts').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        supabase.from('posts').select('*, profiles!posts_user_id_fkey(*), audio:trending_audio(*)').eq('user_id', userId).order('created_at', { ascending: false }),
         supabase.from('reels').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       ]);
       setPosts((postsRes.data as Post[]) || []);
@@ -43,13 +44,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
         const { data: savedData } = await supabase.from('saves').select('post_id').eq('user_id', user.id);
         if (savedData && savedData.length > 0) {
           const ids = savedData.map(s => s.post_id);
-          const { data: savedPostsData } = await supabase.from('posts').select('*, profiles!posts_user_id_fkey(*)').in('id', ids);
+          const { data: savedPostsData } = await supabase.from('posts').select('*, profiles!posts_user_id_fkey(*), audio:trending_audio(*)').in('id', ids);
           if (savedPostsData) setSavedPosts(savedPostsData as unknown as Post[]);
         }
       }
     };
     load();
   }, [userId, user]);
+
+  // Live follower/following/post counts
+  useEffect(() => {
+    if (!profile) return;
+    const channel = supabase
+      .channel(`profile-${userId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+        (payload: any) => setProfile(payload.new as Profile))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, profile?.id]);
 
   if (!profile) return <div className="loading-center"><div className="spinner" /></div>;
 
@@ -58,16 +71,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
 
   const handleFollow = async () => {
     if (!user) return;
-    if (!isFollowing) {
-      setIsFollowing(true);
-      await supabase.from('follows').insert({ follower_id: user.id, following_id: userId });
-      await supabase.from('notifications').insert({ recipient_id: userId, actor_id: user.id, type: 'follow' });
-      showToast('Followed');
-    } else {
-      setIsFollowing(false);
-      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', userId);
-      showToast('Unfollowed');
-    }
+    await toggleFollow();
+    showToast(following ? 'Unfollowed' : 'Followed');
   };
 
   const handleReport = async (reason: string) => {
@@ -96,7 +101,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
   return (
     <div className="page-container wide">
       <div className="profile-header">
-        <Avatar src={profile.avatar_url} alt={profile.username} size="xl" ring={isFollowing || isMyProfile} />
+        <Avatar src={profile.avatar_url} alt={profile.username} size="xl" ring={following || isMyProfile} />
         <div className="profile-info">
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -112,8 +117,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
                 </>
               ) : (
                 <>
-                  <button className={`follow-btn ${isFollowing ? 'following' : 'not-following'}`} onClick={handleFollow}>
-                    {isFollowing ? 'Following' : 'Follow'}
+                  <button className={`follow-btn ${following ? 'following' : 'not-following'}`} onClick={handleFollow}>
+                    {following ? 'Following' : 'Follow'}
                   </button>
                   <button className="btn btn-secondary btn-sm" onClick={handleMessage}><MessageCircle size={16} /></button>
                   <button className="btn btn-secondary btn-sm" onClick={() => setShowReport(true)}><Flag size={16} /></button>
@@ -135,7 +140,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ userId, onEditProfile,
         </div>
       </div>
 
-      {profile.is_private && !isMyProfile && !isFollowing ? (
+      {profile.is_private && !isMyProfile && !following ? (
         <div className="empty-state">
           <p>This account is private</p>
           <span className="text-sm">Follow to see their photos and videos.</span>

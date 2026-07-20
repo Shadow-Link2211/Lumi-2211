@@ -1,9 +1,9 @@
 import React from 'react';
-import { Home, Compass, Clapperboard, PlusSquare, Search, Bell, Send, User, Settings, LogOut } from 'lucide-react';
+import { Home, Compass, Clapperboard, PlusSquare, Search, Bell, Send, User, Settings, LogOut, Archive } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { Avatar } from './Avatar';
 
-export type Page = 'home' | 'explore' | 'reels' | 'create' | 'profile' | 'notifications' | 'messages' | 'search' | 'settings' | 'edit-profile';
+export type Page = 'home' | 'explore' | 'reels' | 'create' | 'profile' | 'notifications' | 'messages' | 'search' | 'settings' | 'edit-profile' | 'archive';
 
 interface SidebarProps {
   current: Page;
@@ -86,6 +86,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ current, onNavigate, unreadNot
         </div>
       </nav>
       <div className="sidebar-footer">
+        <div className={`sidebar-item ${current === 'archive' ? 'active' : ''}`} onClick={() => onNavigate('archive')}>
+          <Archive />
+          <span>Story Archive</span>
+        </div>
         <div className={`sidebar-item ${current === 'settings' ? 'active' : ''}`} onClick={() => onNavigate('settings')}>
           <Settings />
           <span>Settings</span>

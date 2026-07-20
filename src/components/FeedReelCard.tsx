@@ -7,6 +7,7 @@ import { ShareModal } from './ShareModal';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { supabase } from '../lib/supabase';
+import { useLiked } from '../lib/useSocial';
 
 interface FeedReelCardProps {
   reel: Reel;
@@ -16,7 +17,8 @@ interface FeedReelCardProps {
 export const FeedReelCard: React.FC<FeedReelCardProps> = ({ reel, onOpenProfile }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [liked, setLiked] = useState(false);
+  const { liked, toggleLike } = useLiked({ reel_id: reel.id });
+  const [likeCount, setLikeCount] = useState(reel.like_count);
   const [muted, setMuted] = useState(true);
   const [showHeart, setShowHeart] = useState(false);
   const [showBreak, setShowBreak] = useState(false);
@@ -37,18 +39,18 @@ export const FeedReelCard: React.FC<FeedReelCardProps> = ({ reel, onOpenProfile 
     return () => observer.disconnect();
   }, []);
 
-  const handleLike = () => {
-    if (!liked) {
-      setLiked(true);
+  const handleLike = async () => {
+    const wasLiked = liked;
+    await toggleLike();
+    if (!wasLiked) {
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 1000);
-      supabase.from('likes').insert({ user_id: user?.id, reel_id: reel.id }).then();
+      setLikeCount(c => c + 1);
       supabase.from('notifications').insert({ recipient_id: reel.user_id, actor_id: user?.id, type: 'reel_like', reel_id: reel.id }).then();
     } else {
-      setLiked(false);
       setShowBreak(true);
       setTimeout(() => setShowBreak(false), 800);
-      supabase.from('likes').delete().eq('user_id', user?.id).eq('reel_id', reel.id).then();
+      setLikeCount(c => Math.max(0, c - 1));
     }
   };
 
@@ -97,7 +99,7 @@ export const FeedReelCard: React.FC<FeedReelCardProps> = ({ reel, onOpenProfile 
         <div className="spacer" />
       </div>
 
-      <div className="post-likes">{(reel.like_count + (liked ? 1 : 0)).toLocaleString()} likes</div>
+      <div className="post-likes">{likeCount.toLocaleString()} likes</div>
       <div className="post-caption">
         <span className="username-text">{profile?.username}</span>
         {reel.caption}
