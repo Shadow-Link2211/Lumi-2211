@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Heart, MessageCircle, Film } from 'lucide-react';
 import { Post, Reel } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
+import { PostViewer } from '../components/PostViewer';
 
 interface ExplorePageProps {
   onOpenProfile?: (userId: string) => void;
@@ -14,6 +15,7 @@ type ExploreItem =
 export const ExplorePage: React.FC<ExplorePageProps> = ({ onOpenProfile }) => {
   const [items, setItems] = useState<ExploreItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewer, setViewer] = useState<{ type: 'post' | 'reel'; index: number } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -55,7 +57,15 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onOpenProfile }) => {
             const reel = isReel ? (item.data as Reel) : null;
             const post = !isReel ? (item.data as Post) : null;
             return (
-              <div key={`${item.kind}-${item.data.id}`} className="explore-grid-item" onClick={() => onOpenProfile?.(item.data.user_id)}>
+              <div key={`${item.kind}-${item.data.id}`} className="explore-grid-item" onClick={() => {
+                const posts = items.filter((i): i is { kind: 'post'; data: Post } => i.kind === 'post');
+                const reels = items.filter((i): i is { kind: 'reel'; data: Reel } => i.kind === 'reel');
+                if (item.kind === 'post') {
+                  setViewer({ type: 'post', index: posts.findIndex(p => p.data.id === item.data.id) });
+                } else {
+                  setViewer({ type: 'reel', index: reels.findIndex(r => r.data.id === item.data.id) });
+                }
+              }}>
                 <img
                   src={isReel ? (reel!.thumbnail_url || reel!.video_url) : post!.image_url}
                   alt={item.data.caption}
@@ -81,6 +91,16 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onOpenProfile }) => {
             );
           })}
         </div>
+      )}
+      {viewer && (
+        <PostViewer
+          posts={items.filter((i): i is { kind: 'post'; data: Post } => i.kind === 'post').map(i => i.data)}
+          reels={items.filter((i): i is { kind: 'reel'; data: Reel } => i.kind === 'reel').map(i => i.data)}
+          initialType={viewer.type}
+          initialIndex={viewer.index}
+          onClose={() => setViewer(null)}
+          onOpenProfile={(uid) => { setViewer(null); onOpenProfile?.(uid); }}
+        />
       )}
     </div>
   );

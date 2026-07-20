@@ -12,9 +12,10 @@ import { useLiked } from '../lib/useSocial';
 interface FeedReelCardProps {
   reel: Reel;
   onOpenProfile?: (userId: string) => void;
+  onOpenViewer?: () => void;
 }
 
-export const FeedReelCard: React.FC<FeedReelCardProps> = ({ reel, onOpenProfile }) => {
+export const FeedReelCard: React.FC<FeedReelCardProps> = ({ reel, onOpenProfile, onOpenViewer }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { liked, toggleLike } = useLiked({ reel_id: reel.id });
@@ -70,7 +71,7 @@ export const FeedReelCard: React.FC<FeedReelCardProps> = ({ reel, onOpenProfile 
         </div>
       </div>
 
-      <div className="post-image-wrapper" onDoubleClick={handleLike} style={{ aspectRatio: '9/16', maxHeight: 600 }}>
+      <div className="post-image-wrapper" onDoubleClick={handleLike} onClick={onOpenViewer} style={{ aspectRatio: '9/16', maxHeight: 600, cursor: 'pointer' }}>
         {reel.video_url ? (
           <video ref={videoRef} src={reel.video_url} loop muted={muted} playsInline className="post-image" poster={reel.thumbnail_url} style={{ objectFit: 'cover' }} />
         ) : (

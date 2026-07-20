@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { PostCard } from '../components/PostCard';
 import { FeedReelCard } from '../components/FeedReelCard';
 import { StoriesBar } from '../components/StoriesBar';
+import { PostViewer } from '../components/PostViewer';
 import { aiMoodFilter } from '../lib/ai';
 import { useAuth } from '../lib/auth';
 
@@ -34,6 +35,7 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({ onOpenProfile }) => {
   const [page, setPage] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [viewer, setViewer] = useState<{ type: 'post' | 'reel'; index: number } | null>(null);
 
   const buildFeed = (posts: Post[], reels: Reel[]): FeedItem[] => {
     // Interleave: insert a reel every 4 posts
@@ -167,14 +169,25 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({ onOpenProfile }) => {
         <div key={mood} style={{ animation: 'fadeIn var(--transition) ease-out' }}>
           {filteredFeed.map(item =>
             item.kind === 'post' ? (
-              <PostCard key={`post-${item.data.id}`} post={item.data} onOpenProfile={onOpenProfile} onDelete={handleDelete} />
+              <PostCard key={`post-${item.data.id}`} post={item.data} onOpenProfile={onOpenProfile} onDelete={handleDelete} onOpenViewer={() => setViewer({ type: 'post', index: filteredFeed.findIndex(f => f.kind === 'post' && f.data.id === item.data.id) })} />
             ) : (
-              <FeedReelCard key={`reel-${item.data.id}`} reel={item.data} onOpenProfile={onOpenProfile} />
+              <FeedReelCard key={`reel-${item.data.id}`} reel={item.data} onOpenProfile={onOpenProfile} onOpenViewer={() => setViewer({ type: 'reel', index: filteredFeed.findIndex(f => f.kind === 'reel' && f.data.id === item.data.id) })} />
             )
           )}
           {loadingMore && <div className="loading-more"><div className="spinner" /></div>}
           {!hasMore && <div className="text-muted text-sm" style={{ textAlign: 'center', padding: 'var(--space-5)' }}>You're all caught up ✨</div>}
         </div>
+      )}
+      {viewer && (
+        <PostViewer
+          posts={filteredFeed.filter((i): i is { kind: 'post'; data: Post } => i.kind === 'post').map(i => i.data)}
+          reels={filteredFeed.filter((i): i is { kind: 'reel'; data: Reel } => i.kind === 'reel').map(i => i.data)}
+          initialType={viewer.type}
+          initialIndex={viewer.index}
+          onClose={() => setViewer(null)}
+          onOpenProfile={(uid) => { setViewer(null); onOpenProfile(uid); }}
+          onDeletePost={handleDelete}
+        />
       )}
     </div>
   );

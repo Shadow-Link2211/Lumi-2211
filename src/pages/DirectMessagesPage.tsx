@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Search, MessageCircle, Edit2, Trash2, Copy, Forward, Smile, Paperclip, X, VolumeX, Ban, Trash, Tag, Users, Clock, Flame } from 'lucide-react';
+import { Send, Search, MessageCircle, Edit2, Trash2, Copy, Forward, Smile, Paperclip, X, VolumeX, Ban, Trash, Tag, Users, Clock, Flame, EyeOff } from 'lucide-react';
 import { Conversation, Message, Profile, Reaction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 import { Avatar } from '../components/Avatar';
@@ -55,6 +55,11 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
   const [groupResults, setGroupResults] = useState<Profile[]>([]);
   const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
   const [ephemeralMode, setEphemeralMode] = useState(false);
+  const [showHideModal, setShowHideModal] = useState(false);
+  const [hideTargetConv, setHideTargetConv] = useState<ConversationWithOther | null>(null);
+  const [hideCode, setHideCode] = useState('');
+  const [hiddenChats, setHiddenChats] = useState<ConversationWithOther[]>([]);
+  const [showHiddenChats, setShowHiddenChats] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingReactionIds = useRef<Set<string>>(new Set());
@@ -264,7 +269,36 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
   };
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) { setSearchResults([]); return; }
+    if (!searchQuery.trim()) { setSearchResults([]); setShowHiddenChats(false); return; }
+    // Check if query is a 4-letter code for hidden chats
+    if (searchQuery.trim().length === 4 && /^[a-zA-Z0-9]{4}$/.test(searchQuery.trim())) {
+      const code = searchQuery.trim().toUpperCase();
+      const { data: hiddenData } = await supabase
+        .from('hidden_conversations')
+        .select('conversation_id')
+        .eq('user_id', user?.id || '')
+        .ilike('hidden_code', code);
+      if (hiddenData && hiddenData.length > 0) {
+        const convIds = hiddenData.map(h => h.conversation_id);
+        const { data: convs } = await supabase
+          .from('conversations')
+          .select('*, p1:profiles!conversations_participant_one_fkey(*), p2:profiles!conversations_participant_two_fkey(*)')
+          .in('id', convIds)
+          .order('last_message_at', { ascending: false });
+        if (convs) {
+          const hiddenConvs: ConversationWithOther[] = convs.map(c => {
+            const isOne = c.participant_one === user?.id;
+            const other = (isOne ? c.p2 : c.p1) as Profile;
+            return { ...c, other_user: other, unread_count: 0 } as ConversationWithOther;
+          });
+          setHiddenChats(hiddenConvs);
+          setShowHiddenChats(true);
+          setSearchResults([]);
+          return;
+        }
+      }
+    }
+    setShowHiddenChats(false);
     const { data } = await supabase.from('profiles').select('*').or(`username.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`).neq('id', user?.id || '').limit(10);
     if (data) setSearchResults(data as Profile[]);
   };
@@ -475,6 +509,35 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
     setNicknameValue('');
   };
 
+  // ===== Hide chat =====
+  const openHideModal = (conv: ConversationWithOther) => {
+    setHideTargetConv(conv);
+    setHideCode('');
+    setShowHideModal(true);
+    setChatContextMenu(null);
+  };
+  const confirmHideChat = async () => {
+    if (!user || !hideTargetConv || hideCode.trim().length !== 4) return;
+    const code = hideCode.trim().toUpperCase();
+    await supabase.from('hidden_conversations').upsert({
+      user_id: user.id,
+      conversation_id: hideTargetConv.id,
+      hidden_code: code,
+      hidden_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,conversation_id' });
+    if (activeConv?.id === hideTargetConv.id) setActiveConv(null);
+    setShowHideModal(false);
+    setHideTargetConv(null);
+    setHideCode('');
+    loadConversations();
+  };
+  const unhideChat = async (conv: ConversationWithOther) => {
+    if (!user) return;
+    await supabase.from('hidden_conversations').delete().eq('user_id', user.id).eq('conversation_id', conv.id);
+    setHiddenChats(prev => prev.filter(c => c.id !== conv.id));
+    loadConversations();
+  };
+
   // ===== Reactions (fixed: dedupe + pending tracking) =====
   const openReactionMenu = (e: React.MouseEvent, msg: Message) => {
     e.preventDefault(); e.stopPropagation();
@@ -594,7 +657,24 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
             </div>
           </div>
           <div className="dm-conversation-list">
-            {searchResults.length > 0 ? (
+            {showHiddenChats ? (
+              <>
+                <div style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 12, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                  <EyeOff size={14} /> Hidden chats ({hiddenChats.length})
+                </div>
+                {hiddenChats.map(c => (
+                  <div key={c.id} className="dm-conversation-item" onClick={() => { setActiveConv(c); setShowHiddenChats(false); setSearchQuery(''); }} onContextMenu={(e) => openChatContextMenu(e, c)}>
+                    <Avatar src={c.other_user?.avatar_url || ''} alt={c.other_user?.username || ''} size="md" />
+                    <div className="dm-conversation-info">
+                      <div className="name">{displayName(c)}</div>
+                      <div className="last-msg ellipsis">{c.last_message || 'Start a conversation'}</div>
+                    </div>
+                    <button className="btn-icon" style={{ flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); unhideChat(c); }} title="Unhide"><EyeOff size={14} /></button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost w-full" style={{ marginTop: 'var(--space-2)' }} onClick={() => { setShowHiddenChats(false); setSearchQuery(''); }}>Back to chats</button>
+              </>
+            ) : searchResults.length > 0 ? (
               searchResults.map(p => (
                 <div key={p.id} className="dm-conversation-item" onClick={() => { startConversation(p.id); setSearchResults([]); setSearchQuery(''); }}>
                   <Avatar src={p.avatar_url} alt={p.username} size="md" />
@@ -725,6 +805,7 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
             <VolumeX size={16} /><span>{chatContextMenu.conv.muted ? 'Unmute Chat' : 'Mute Chat'}</span>
           </div>
           <div className="context-menu-item" onClick={() => openNicknameModal(chatContextMenu.conv.other_user)}><Tag size={16} /><span>Nickname</span></div>
+          <div className="context-menu-item" onClick={() => openHideModal(chatContextMenu.conv)}><EyeOff size={16} /><span>Hide Chat</span></div>
           <div className="context-menu-item danger" onClick={() => blockUser(chatContextMenu.conv)}><Ban size={16} /><span>Block User</span></div>
           <div className="context-menu-item danger" onClick={() => deleteChatHistory(chatContextMenu.conv)}><Trash size={16} /><span>Delete Chat History</span></div>
         </div>
@@ -798,6 +879,34 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => { setShowGroupModal(false); setGroupName(''); setGroupSearch(''); setGroupResults([]); setGroupMembers([]); }}>Cancel</button>
               <button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || groupMembers.length < 1}>Create Group</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hide chat modal */}
+      {showHideModal && (
+        <div className="modal-overlay" onClick={() => { setShowHideModal(false); setHideTargetConv(null); setHideCode(''); }}>
+          <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h2 className="modal-title">Hide Chat</h2><button className="btn-icon" onClick={() => { setShowHideModal(false); setHideTargetConv(null); setHideCode(''); }}><X size={18} /></button></div>
+            <div className="modal-body">
+              <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-3)' }}>This chat will be hidden from your chat list. To reveal it later, type a 4-letter code in the search bar.</p>
+              <div className="label">4-Letter Reveal Code</div>
+              <input
+                className="input"
+                placeholder="e.g. LUMI"
+                maxLength={4}
+                value={hideCode}
+                onChange={e => setHideCode(e.target.value.toUpperCase())}
+                onKeyDown={e => e.key === 'Enter' && confirmHideChat()}
+                autoFocus
+                style={{ textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 700, textAlign: 'center', fontSize: 18 }}
+              />
+              <p className="text-sm text-muted" style={{ marginTop: 'var(--space-2)', fontSize: 12 }}>Remember this code! You'll need it to find this chat again.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => { setShowHideModal(false); setHideTargetConv(null); setHideCode(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={confirmHideChat} disabled={hideCode.trim().length !== 4}>Hide Chat</button>
             </div>
           </div>
         </div>

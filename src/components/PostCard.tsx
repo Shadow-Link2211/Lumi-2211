@@ -17,9 +17,10 @@ interface PostCardProps {
   post: Post;
   onOpenProfile?: (userId: string) => void;
   onDelete?: (postId: string) => void;
+  onOpenViewer?: () => void;
 }
 
-export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelete }) => {
+export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelete, onOpenViewer }) => {
   const { user, settings, isOwner } = useAuth();
   const { showToast } = useToast();
   const { liked, toggleLike } = useLiked({ post_id: post.id });
@@ -228,7 +229,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDelet
         )}
       </div>
 
-      <div id={`post-media-${post.id}`} className="post-image-wrapper post-image-wrapper-contain" onDoubleClick={handleLike}>
+      <div id={`post-media-${post.id}`} className="post-image-wrapper post-image-wrapper-contain" onDoubleClick={handleLike} onClick={onOpenViewer} style={{ cursor: 'pointer' }}>
         <img src={post.image_url} alt={post.caption} className={explicitBlur ? 'post-image-blur' : ''} loading="lazy" />
         {explicitBlur && (
           <div className="post-explicit-overlay">

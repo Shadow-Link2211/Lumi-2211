@@ -173,6 +173,7 @@ export interface HiddenConversation {
   user_id: string;
   conversation_id: string;
   hidden_at: string;
+  hidden_code: string | null;
 }
 
 export interface MutedChat {
