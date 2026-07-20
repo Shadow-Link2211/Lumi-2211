@@ -24,7 +24,7 @@ export const LoginPage: React.FC<{ onSwitch: () => void }> = ({ onSwitch }) => {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <img src="/assets/images/files_11030906-2026-07-18T17-00-19-421Z-files_11030906-2026-07-18T16-49-02-927Z-ed179abf-c932-4a59-ac3c-944712c405bf.webp" alt="Lumi" />
+          <img src="/logo.png" alt="Lumi" />
         </div>
         <p className="auth-subtitle">Welcome back. Sign in to continue.</p>
         <form className="auth-form" onSubmit={handleSubmit}>

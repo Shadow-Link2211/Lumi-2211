@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ current, onNavigate, unreadNot
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <img src="/assets/images/files_11030906-2026-07-18T17-00-19-421Z-files_11030906-2026-07-18T16-49-02-927Z-ed179abf-c932-4a59-ac3c-944712c405bf.webp" alt="Lumi" />
+        <img src="/logo.png" alt="Lumi" />
       </div>
       <nav className="sidebar-nav">
         {navItems.map(item => {
@@ -134,7 +134,7 @@ export const MobileTopBar: React.FC<{ onNavigate: (page: Page) => void; unreadMe
   return (
     <div className="mobile-top-bar">
       <div className="sidebar-logo">
-        <img src="/assets/images/files_11030906-2026-07-18T17-00-19-421Z-files_11030906-2026-07-18T16-49-02-927Z-ed179abf-c932-4a59-ac3c-944712c405bf.webp" alt="Lumi" />
+        <img src="/logo.png" alt="Lumi" />
       </div>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <button className="btn-icon" style={{ position: 'relative' }} onClick={() => onNavigate('notifications')}>

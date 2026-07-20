@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 interface AvatarProps {
   src: string;
   alt: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   ring?: boolean;
   className?: string;
 }

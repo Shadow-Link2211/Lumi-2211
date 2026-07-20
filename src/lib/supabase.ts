@@ -87,6 +87,7 @@ export interface Reel {
   like_count: number;
   comment_count: number;
   view_count: number;
+  save_count: number;
   is_explicit: boolean;
   created_at: string;
   profiles?: Profile;
@@ -129,6 +130,11 @@ export interface Message {
   media_url: string | null;
   media_type: string | null;
   media_thumbnail_url: string | null;
+  shared_post_id: string | null;
+  shared_reel_id: string | null;
+  is_ephemeral: boolean;
+  expires_at: string | null;
+  viewed_by: string[];
   sender?: Profile;
   reactions?: Reaction[];
 }
@@ -147,6 +153,10 @@ export interface Conversation {
   participant_two: string;
   last_message: string;
   last_message_at: string;
+  is_group: boolean;
+  group_name: string;
+  group_icon_url: string;
+  group_owner_id: string | null;
   created_at: string;
   other_user?: Profile;
 }

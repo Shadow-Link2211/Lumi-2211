@@ -101,6 +101,53 @@ export function useFollowing(followingId: string | undefined) {
 }
 
 /**
+ * Tracks whether the current user has saved a given post or reel, with realtime
+ * sync. The toggle writes to the `saves` table (trigger updates the count column).
+ */
+export function useSaved(target: { post_id?: string; reel_id?: string }) {
+  const { user } = useAuth();
+  const key = target.post_id ? 'post_id' : 'reel_id';
+  const value = target.post_id || target.reel_id;
+  const [saved, setSaved] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!user || !value) return;
+    const { data } = await supabase
+      .from('saves')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq(key, value)
+      .maybeSingle();
+    setSaved(!!data);
+  }, [user, key, value]);
+
+  useEffect(() => {
+    load();
+    if (!user || !value) return;
+    const channel = supabase
+      .channel(`saves-${key}-${value}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'saves', filter: `${key}=eq.${value}` },
+        () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load, user, key, value]);
+
+  const toggleSave = useCallback(async () => {
+    if (!user || !value) return;
+    if (!saved) {
+      setSaved(true);
+      await supabase.from('saves').insert({ user_id: user.id, [key]: value } as any);
+    } else {
+      setSaved(false);
+      await supabase.from('saves').delete().eq('user_id', user.id).eq(key, value);
+    }
+  }, [saved, user, key, value]);
+
+  return { saved, toggleSave };
+}
+
+/**
  * Subscribes to realtime updates on a set of posts/reels so counts (likes,
  * comments) stay live across screens. Returns nothing — callers should
  * pass an updater callback that merges the new row into their state.

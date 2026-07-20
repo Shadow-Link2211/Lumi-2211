@@ -303,6 +303,7 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
       id: tempId, conversation_id: activeConv.id, sender_id: user.id, content,
       is_read: false, created_at: new Date().toISOString(), edited_at: null,
       media_url: mediaUrl, media_type: mediaType, media_thumbnail_url: null,
+      shared_post_id: null, shared_reel_id: null, is_ephemeral: false, expires_at: null, viewed_by: [],
       sender: user, reactions: [],
     };
     setMessages(prev => [...prev, optimistic]);
