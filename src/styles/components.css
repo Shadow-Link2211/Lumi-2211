@@ -2112,6 +2112,190 @@
   flex: 1;
 }
 
+/* ===== Reels Scroll Container ===== */
+.reels-scroll-container {
+  height: calc(100vh - 0px);
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.reels-scroll-container::-webkit-scrollbar { display: none; }
+.reels-scroll-item {
+  height: 100vh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reel-fullscreen {
+  width: 100%;
+  max-width: 450px;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+
+/* ===== Reel Comments Panel ===== */
+.reel-comments-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 50%;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+}
+.reel-comments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.reel-comments-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reel-comment {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-size: 14px;
+}
+.reel-comment-input {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.reel-comment-input .input { flex: 1; }
+
+/* ===== Share Modal ===== */
+.share-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.share-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background var(--transition);
+}
+.share-option:hover { background: var(--bg-secondary); }
+.share-option .icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+.share-option span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.qr-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+/* ===== Screen Time ===== */
+.screen-time-section { display: flex; flex-direction: column; gap: var(--space-4); }
+.screen-time-overview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+.screen-time-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  text-align: center;
+}
+.screen-time-card-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: var(--space-1);
+}
+.screen-time-card-value {
+  font-size: 24px;
+  font-weight: 700;
+}
+.screen-time-card-sub {
+  font-size: 12px;
+  margin-top: var(--space-1);
+}
+.screen-time-progress {
+  height: 4px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  margin: var(--space-2) 0;
+  overflow: hidden;
+}
+.screen-time-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width var(--transition);
+}
+.screen-time-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.screen-time-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.screen-time-bar-label {
+  width: 80px;
+  font-size: 13px;
+}
+.screen-time-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.screen-time-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 4px;
+}
+.screen-time-bar-value {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  min-width: 40px;
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .share-options { grid-template-columns: repeat(3, 1fr); }
+  .screen-time-overview { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 768px) {
   .ig-viewer {
     width: 100vw;

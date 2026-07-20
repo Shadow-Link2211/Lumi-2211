@@ -61,13 +61,38 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({ onOpenProfile }) => {
       supabase.from('reels').select('*, profiles!reels_user_id_fkey(*)').order('created_at', { ascending: false }).limit(5),
       supabase.from('stories').select('*, profiles!stories_user_id_fkey(*)').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(20),
     ]);
-    const posts = (postsRes.data as unknown as Post[]) || [];
+    let posts = (postsRes.data as unknown as Post[]) || [];
     const reels = (reelsRes.data as unknown as Reel[]) || [];
+
+    // Use recommendation algorithm if user is logged in
+    if (user && posts.length > 0) {
+      try {
+        const { data: recommended } = await supabase.rpc('get_recommended_posts', { p_user_id: user.id, p_limit: 10 });
+        if (recommended && recommended.length > 0) {
+          // Fetch full post data with profiles for recommended posts
+          const recIds = recommended.map((r: any) => r.id);
+          const { data: recPosts } = await supabase
+            .from('posts')
+            .select('*, profiles!posts_user_id_fkey(*), audio:trending_audio(*)')
+            .in('id', recIds);
+          if (recPosts && recPosts.length > 0) {
+            // Sort by recommendation score
+            const scoreMap = new Map(recommended.map((r: any) => [r.id, r.score]));
+            posts = (recPosts as unknown as Post[]).sort((a, b) =>
+              Number(scoreMap.get(b.id) || 0) - Number(scoreMap.get(a.id) || 0)
+            );
+          }
+        }
+      } catch {
+        // Fall back to chronological if RPC fails
+      }
+    }
+
     setFeed(buildFeed(posts, reels));
     setStories((storiesRes.data as unknown as Story[]) || []);
     if (posts.length < 10) setHasMore(false);
     setLoading(false);
-  }, []);
+  }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

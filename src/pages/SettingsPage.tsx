@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Shield, ShieldAlert, Lock, User, Link2, Share2, Copy, MessageCircle, Send, Mail, QrCode, Globe } from 'lucide-react';
+import { Moon, Sun, Shield, ShieldAlert, Lock, User, Link2, Share2, Copy, MessageCircle, Send, Mail, QrCode, Globe, Clock } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { Modal } from '../components/Modal';
@@ -212,6 +212,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
         )}
       </div>
 
+      {/* Screen Time */}
+      <div className="settings-section">
+        <h2 className="settings-section-title"><Clock size={16} style={{ display: 'inline', marginRight: '4px' }} />Screen Time</h2>
+        <ScreenTimeSection settings={settings} updateSettings={updateSettings} />
+      </div>
+
       {/* Invite Friends */}
       <div className="settings-section">
         <h2 className="settings-section-title"><Share2 size={16} style={{ display: 'inline', marginRight: '4px' }} />Invite Friends</h2>
@@ -296,6 +302,139 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
         />
         <button className="btn btn-primary w-full mt-4" onClick={disableParentalLock}>Disable Parental Lock</button>
       </Modal>
+    </div>
+  );
+};
+
+interface ScreenTimeStat {
+  stat_date: string;
+  section: string;
+  seconds_spent: number;
+  app_opens: number;
+}
+
+const ScreenTimeSection: React.FC<{ settings: any; updateSettings: (s: any) => void }> = ({ settings, updateSettings }) => {
+  const { user } = useAuth();
+  const [stats, setStats] = useState<ScreenTimeStat[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [goalMinutes, setGoalMinutes] = useState(settings?.screen_time_goal_minutes || 120);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from('screen_time_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('stat_date', sevenDaysAgo)
+        .order('stat_date', { ascending: false });
+      setStats((data as ScreenTimeStat[]) || []);
+      setLoading(false);
+    };
+    load();
+  }, [user]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayStats = stats.filter(s => s.stat_date === today);
+  const todayTotalSeconds = todayStats.reduce((sum, s) => sum + s.seconds_spent, 0);
+  const todayTotalMinutes = Math.floor(todayTotalSeconds / 60);
+  const goalMinutesNum = goalMinutes || 120;
+  const progress = Math.min(100, (todayTotalMinutes / goalMinutesNum) * 100);
+  const isOverGoal = todayTotalMinutes > goalMinutesNum;
+
+  const last7DaysTotal = stats.reduce((sum, s) => sum + s.seconds_spent, 0);
+  const avgPerDay = Math.floor((last7DaysTotal / 7) / 60);
+  const totalAppOpens = stats.reduce((sum, s) => sum + (s.app_opens || 0), 0);
+
+  const sectionTotals: Record<string, number> = {};
+  stats.forEach(s => {
+    sectionTotals[s.section] = (sectionTotals[s.section] || 0) + s.seconds_spent;
+  });
+  const topSections = Object.entries(sectionTotals)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5);
+
+  const saveGoal = async () => {
+    if (!user) return;
+    await supabase.from('user_settings').upsert({
+      user_id: user.id,
+      screen_time_goal_minutes: goalMinutes,
+    }, { onConflict: 'user_id' });
+    updateSettings({ ...settings, screen_time_goal_minutes: goalMinutes });
+  };
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+
+  if (loading) return <div className="loading-center"><div className="spinner" /></div>;
+
+  return (
+    <div className="screen-time-section">
+      <div className="screen-time-overview">
+        <div className="screen-time-card">
+          <div className="screen-time-card-label">Today</div>
+          <div className="screen-time-card-value">{formatTime(todayTotalSeconds)}</div>
+          <div className="screen-time-progress">
+            <div className="screen-time-progress-bar" style={{
+              width: `${progress}%`,
+              background: isOverGoal ? 'var(--error)' : 'var(--success)',
+            }} />
+          </div>
+          <div className="screen-time-card-sub" style={{ color: isOverGoal ? 'var(--error)' : 'var(--text-tertiary)' }}>
+            {isOverGoal ? `${todayTotalMinutes - goalMinutesNum}m over goal` : `${goalMinutesNum - todayTotalMinutes}m remaining`}
+          </div>
+        </div>
+        <div className="screen-time-card">
+          <div className="screen-time-card-label">7-Day Average</div>
+          <div className="screen-time-card-value">{avgPerDay}m</div>
+          <div className="screen-time-card-sub">per day</div>
+        </div>
+        <div className="screen-time-card">
+          <div className="screen-time-card-label">App Opens</div>
+          <div className="screen-time-card-value">{totalAppOpens}</div>
+          <div className="screen-time-card-sub">last 7 days</div>
+        </div>
+      </div>
+
+      <div className="screen-time-goal">
+        <div className="label">Daily Time Goal (minutes)</div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <input
+            type="range"
+            min="15"
+            max="480"
+            step="15"
+            value={goalMinutes}
+            onChange={e => setGoalMinutes(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>{goalMinutes}m</span>
+          <button className="btn btn-primary btn-sm" onClick={saveGoal}>Save</button>
+        </div>
+      </div>
+
+      {topSections.length > 0 && (
+        <div className="screen-time-breakdown">
+          <div className="label">Time by Section (7 days)</div>
+          {topSections.map(([section, seconds]) => {
+            const pct = (seconds / last7DaysTotal) * 100;
+            return (
+              <div key={section} className="screen-time-bar-row">
+                <span className="screen-time-bar-label" style={{ textTransform: 'capitalize' }}>{section}</span>
+                <div className="screen-time-bar-track">
+                  <div className="screen-time-bar-fill" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="screen-time-bar-value">{formatTime(seconds)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

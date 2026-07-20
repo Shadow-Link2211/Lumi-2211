@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Search, MessageCircle, Edit2, Trash2, Copy, Forward, Smile, Paperclip, X, VolumeX, Ban, Trash, Tag } from 'lucide-react';
+import { Send, Search, MessageCircle, Edit2, Trash2, Copy, Forward, Smile, Paperclip, X, VolumeX, Ban, Trash, Tag, Users, Clock, Flame } from 'lucide-react';
 import { Conversation, Message, Profile, Reaction } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 import { Avatar } from '../components/Avatar';
@@ -49,6 +49,12 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
   const [attachment, setAttachment] = useState<AttachmentPreview | null>(null);
   const [nicknameModal, setNicknameModal] = useState<Profile | null>(null);
   const [nicknameValue, setNicknameValue] = useState('');
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupResults, setGroupResults] = useState<Profile[]>([]);
+  const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
+  const [ephemeralMode, setEphemeralMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingReactionIds = useRef<Set<string>>(new Set());
@@ -263,6 +269,47 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
     if (data) setSearchResults(data as Profile[]);
   };
 
+  // ===== Group chat creation =====
+  const handleGroupSearch = async () => {
+    if (!groupSearch.trim()) { setGroupResults([]); return; }
+    const { data } = await supabase.from('profiles').select('*').or(`username.ilike.%${groupSearch}%,full_name.ilike.%${groupSearch}%`).neq('id', user?.id || '').limit(10);
+    setGroupResults((data as Profile[]) || []);
+  };
+
+  const toggleGroupMember = (p: Profile) => {
+    setGroupMembers(prev => prev.some(m => m.id === p.id) ? prev.filter(m => m.id !== p.id) : [...prev, p]);
+  };
+
+  const createGroup = async () => {
+    if (!user || !groupName.trim() || groupMembers.length < 1) return;
+    const { data: conv } = await supabase
+      .from('conversations')
+      .insert({
+        participant_one: user.id,
+        participant_two: groupMembers[0].id,
+        is_group: true,
+        group_name: groupName.trim(),
+        group_owner_id: user.id,
+      })
+      .select('*, p1:profiles!conversations_participant_one_fkey(*), p2:profiles!conversations_participant_two_fkey(*)')
+      .single();
+    if (conv) {
+      // Add additional members to chat_members
+      const memberRows = groupMembers.map(m => ({ conversation_id: conv.id, user_id: m.id }));
+      memberRows.push({ conversation_id: conv.id, user_id: user.id });
+      await supabase.from('chat_members').insert(memberRows);
+      const isOne = conv.participant_one === user.id;
+      const other = (isOne ? conv.p2 : conv.p1) as Profile;
+      setActiveConv({ ...(conv as unknown as Conversation), other_user: other, unread_count: 0 });
+      loadConversations();
+    }
+    setShowGroupModal(false);
+    setGroupName('');
+    setGroupSearch('');
+    setGroupResults([]);
+    setGroupMembers([]);
+  };
+
   // ===== Media attachment =====
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -310,9 +357,14 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
     setMessageText('');
     setAttachment(null);
 
+    const insertData: any = { conversation_id: activeConv.id, sender_id: user.id, content, media_url: mediaUrl, media_type: mediaType };
+    if (ephemeralMode) {
+      insertData.is_ephemeral = true;
+      insertData.expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    }
     const { data } = await supabase
       .from('messages')
-      .insert({ conversation_id: activeConv.id, sender_id: user.id, content, media_url: mediaUrl, media_type: mediaType })
+      .insert(insertData)
       .select('*, sender:profiles!messages_sender_id_fkey(*)')
       .single();
     if (data) {
@@ -513,6 +565,7 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
   };
 
   const renderMedia = (msg: Message) => {
+    if (msg.is_ephemeral && msg.expires_at && new Date(msg.expires_at) < new Date()) return <span className="text-muted text-sm" style={{ fontStyle: 'italic' }}>Message expired</span>;
     if (!msg.media_url) return null;
     if (msg.media_type === 'image') {
       return <img src={msg.media_url} alt="attachment" className="message-media" loading="lazy" />;
@@ -523,14 +576,17 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
     return null;
   };
 
-  const displayName = (c: ConversationWithOther) => c.nickname || c.other_user?.username;
+  const displayName = (c: ConversationWithOther) => c.is_group ? (c.group_name || 'Group Chat') : (c.nickname || c.other_user?.username);
 
   return (
     <div className="page-container wide">
       <div className="page-header"><h1 className="page-title">Messages</h1></div>
       <div className="dm-layout">
         <div className={`dm-sidebar ${activeConv ? 'hidden-mobile' : ''}`}>
-          <div className="dm-sidebar-header">{user.username}</div>
+          <div className="dm-sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {user.username}
+            <button className="btn-icon" onClick={() => setShowGroupModal(true)} title="New Group"><Users size={18} /></button>
+          </div>
           <div className="dm-search">
             <div style={{ position: 'relative' }}>
               <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
@@ -608,6 +664,7 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
                           </div>
                         ) : (
                           <>
+                            {m.is_ephemeral && <Flame size={10} style={{ color: 'var(--error)', marginBottom: 2 }} />}
                             {renderMedia(m)}
                             {m.content && <span className="message-content">{m.content}</span>}
                             {m.edited_at && <span className="edited-indicator">Edited</span>}
@@ -635,7 +692,8 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
               <div className="dm-input-bar">
                 <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                 <button className="btn-icon" onClick={() => fileInputRef.current?.click()} title="Attach"><Paperclip size={20} /></button>
-                <input className="input" placeholder="Message..." value={messageText} onChange={e => setMessageText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} />
+                <button className={`btn-icon ${ephemeralMode ? 'active' : ''}`} onClick={() => setEphemeralMode(!ephemeralMode)} title="Disappearing messages" style={{ color: ephemeralMode ? 'var(--error)' : 'var(--text-tertiary)' }}><Flame size={20} /></button>
+                <input className="input" placeholder={ephemeralMode ? 'Disappearing message...' : 'Message...'} value={messageText} onChange={e => setMessageText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} />
                 <button className="btn btn-primary btn-sm" onClick={sendMessage} disabled={!messageText.trim() && !attachment}><Send size={16} /></button>
               </div>
             </>
@@ -701,6 +759,45 @@ export const DirectMessagesPage: React.FC<DirectMessagesProps> = ({ initialUserI
                 ))}
                 {forwardResults.length === 0 && forwardSearch && <div className="text-muted text-sm" style={{ textAlign: 'center', padding: 'var(--space-3)' }}>No users found</div>}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group chat modal */}
+      {showGroupModal && (
+        <div className="modal-overlay" onClick={() => { setShowGroupModal(false); setGroupName(''); setGroupSearch(''); setGroupResults([]); setGroupMembers([]); }}>
+          <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h2 className="modal-title">New Group</h2><button className="btn-icon" onClick={() => { setShowGroupModal(false); setGroupName(''); setGroupSearch(''); setGroupResults([]); setGroupMembers([]); }}><X size={18} /></button></div>
+            <div className="modal-body">
+              <input className="input" placeholder="Group name..." value={groupName} onChange={e => setGroupName(e.target.value)} style={{ marginBottom: 'var(--space-3)' }} />
+              {groupMembers.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                  {groupMembers.map(m => (
+                    <div key={m.id} className="chip" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-full)', padding: '4px 10px', fontSize: 13 }}>
+                      {m.username}
+                      <button className="btn-icon" style={{ width: 16, height: 16 }} onClick={() => toggleGroupMember(m)}><X size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ position: 'relative', marginBottom: 'var(--space-2)' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                <input className="input" style={{ paddingLeft: '36px' }} placeholder="Add members..." value={groupSearch} onChange={e => { setGroupSearch(e.target.value); handleGroupSearch(); }} />
+              </div>
+              <div className="search-results" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {groupResults.map(p => (
+                  <div key={p.id} className="search-result-item" onClick={() => toggleGroupMember(p)}>
+                    <Avatar src={p.avatar_url} alt={p.username} size="sm" />
+                    <div className="search-result-info"><div className="name">{p.username}</div><div className="sub">{p.full_name}</div></div>
+                    {groupMembers.some(m => m.id === p.id) && <X size={16} style={{ color: 'var(--error)' }} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => { setShowGroupModal(false); setGroupName(''); setGroupSearch(''); setGroupResults([]); setGroupMembers([]); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || groupMembers.length < 1}>Create Group</button>
             </div>
           </div>
         </div>
